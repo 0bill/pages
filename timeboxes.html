@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overtime Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .week-navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .day-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .day-container.weekend {
+            background-color: #ffe6e6;
+        }
+        .day-container.today {
+            background-color: #e6f3ff;
+        }
+        .day-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .overtime-boxes {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .overtime-box {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #ccc;
+            margin: 2px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .overtime-box.full {
+            background-color: #90EE90;
+        }
+        .overtime-box.partial-15 {
+            background-color: #E6FFE6;
+        }
+        .overtime-box.partial-30 {
+            background-color: #CCFFCC;
+        }
+        .overtime-box.partial-45 {
+            background-color: #B3FFB3;
+        }
+        .overtime-balance {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        button {
+            margin-right: 10px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .clear-data {
+            background-color: #ff6666;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="week-navigation">
+            <button onclick="changeWeek(-1)">Previous Week</button>
+            <span id="current-week"></span>
+            <button onclick="changeWeek(1)">Next Week</button>
+            <button onclick="jumpToCurrentWeek()">Jump to Current Week</button>
+        </div>
+        <div class="overtime-balance" id="week-balance-display"></div>
+        <div class="overtime-balance" id="total-balance-display"></div>
+        <button class="clear-data" onclick="clearAllData()">Clear All Data</button>
+        <div id="days-container"></div>
+    </div>
+
+    <script>
+        let overtimeData = JSON.parse(localStorage.getItem('overtimeData')) || {};
+        let currentWeekStart = new Date();
+        currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
+
+        function saveData() {
+            localStorage.setItem('overtimeData', JSON.stringify(overtimeData));
+        }
+
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        function getDaysOfWeek(weekStart) {
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(weekStart);
+                date.setDate(date.getDate() + i);
+                days.push(formatDate(date));
+            }
+            return days;
+        }
+
+        function getOvertimeBalance(startDate, endDate) {
+            return Object.entries(overtimeData).reduce((total, [day, hours]) => {
+                if ((!startDate || day >= startDate) && (!endDate || day <= endDate)) {
+                    return total + Object.values(hours).reduce((dayTotal, hour) => dayTotal + hour, 0);
+                }
+                return total;
+            }, 0);
+        }
+
+        function handleBoxClick(day, hour) {
+            if (!overtimeData[day]) overtimeData[day] = {};
+            overtimeData[day][hour] = ((overtimeData[day][hour] || 0) + 15) % 75;
+            saveData();
+            renderApp();
+        }
+
+        function handleBoxLongPress(day, hour) {
+            if (!overtimeData[day]) overtimeData[day] = {};
+            overtimeData[day][hour] = 60;
+            saveData();
+            renderApp();
+        }
+
+        function renderOvertimeBox(day, hour) {
+            const consumed = overtimeData[day]?.[hour] || 0;
+            const box = document.createElement('div');
+            box.className = `overtime-box ${consumed === 60 ? 'full' : `partial-${consumed}`}`;
+            box.textContent = consumed > 0 ? consumed : '';
+
+            let longPressTimer;
+            box.addEventListener('mousedown', () => {
+                longPressTimer = setTimeout(() => {
+                    handleBoxLongPress(day, hour);
+                }, 500); // 500ms for long press
+            });
+            box.addEventListener('mouseup', () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    handleBoxClick(day, hour);
+                }
+            });
+            box.addEventListener('mouseleave', () => {
+                if (longPressTimer) clearTimeout(longPressTimer);
+            });
+
+            // For touch devices
+            box.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                longPressTimer = setTimeout(() => {
+                    handleBoxLongPress(day, hour);
+                }, 500);
+            });
+            box.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    handleBoxClick(day, hour);
+                }
+            });
+
+            return box;
+        }
+
+        function renderDay(day) {
+            const dayContainer = document.createElement('div');
+            const date = new Date(day);
+            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+            const isToday = day === formatDate(new Date());
+            dayContainer.className = `day-container ${isWeekend ? 'weekend' : ''} ${isToday ? 'today' : ''}`;
+
+            const dayTitle = document.createElement('div');
+            dayTitle.className = 'day-title';
+            dayTitle.textContent = `${day} (${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]})`;
+            dayContainer.appendChild(dayTitle);
+
+            const boxesContainer = document.createElement('div');
+            boxesContainer.className = 'overtime-boxes';
+            for (let i = 0; i < 8; i++) {
+                boxesContainer.appendChild(renderOvertimeBox(day, i));
+            }
+            dayContainer.appendChild(boxesContainer);
+
+            return dayContainer;
+        }
+
+        function changeWeek(offset) {
+            currentWeekStart.setDate(currentWeekStart.getDate() + (7 * offset));
+            renderApp();
+        }
+
+        function jumpToCurrentWeek() {
+            currentWeekStart = new Date();
+            currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay() + 1);
+            renderApp();
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all overtime data? This action cannot be undone.')) {
+                overtimeData = {};
+                saveData();
+                renderApp();
+            }
+        }
+
+        function formatBalance(minutes) {
+            return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+        }
+
+        function renderApp() {
+            const daysContainer = document.getElementById('days-container');
+            daysContainer.innerHTML = '';
+            
+            const weekDisplay = document.getElementById('current-week');
+            const weekEnd = new Date(currentWeekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            weekDisplay.textContent = `${formatDate(currentWeekStart)} to ${formatDate(weekEnd)}`;
+
+            const weekBalanceDisplay = document.getElementById('week-balance-display');
+            const weekBalance = getOvertimeBalance(formatDate(currentWeekStart), formatDate(weekEnd));
+            weekBalanceDisplay.textContent = `This Week's Balance: ${formatBalance(weekBalance)}`;
+
+            const totalBalanceDisplay = document.getElementById('total-balance-display');
+            const totalBalance = getOvertimeBalance();
+            totalBalanceDisplay.textContent = `Total Balance: ${formatBalance(totalBalance)}`;
+
+            getDaysOfWeek(currentWeekStart).forEach(day => {
+                daysContainer.appendChild(renderDay(day));
+            });
+        }
+
+        renderApp();
+    </script>
+</body>
+</html>
