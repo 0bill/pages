@@ -62,6 +62,18 @@
         .overtime-box.partial-45 {
             background-color: #B3FFB3;
         }
+        .overtime-box.negative-15 {
+            background-color: #FFE6E6;
+        }
+        .overtime-box.negative-30 {
+            background-color: #FFCCCC;
+        }
+        .overtime-box.negative-45 {
+            background-color: #FFB3B3;
+        }
+        .overtime-box.negative-60 {
+            background-color: #FF9999;
+        }
         .overtime-balance {
             font-weight: bold;
             margin-bottom: 10px;
@@ -127,16 +139,19 @@
             }, 0);
         }
 
-        function handleBoxClick(day, hour) {
+        function handleBoxClick(day, hour, isCtrlPressed) {
             if (!overtimeData[day]) overtimeData[day] = {};
-            overtimeData[day][hour] = ((overtimeData[day][hour] || 0) + 15) % 75;
-            saveData();
-            renderApp();
-        }
-
-        function handleBoxLongPress(day, hour) {
-            if (!overtimeData[day]) overtimeData[day] = {};
-            overtimeData[day][hour] = 60;
+            
+            if (isCtrlPressed) {
+                // Negative values
+                overtimeData[day][hour] = ((overtimeData[day][hour] || 0) - 15);
+                if (overtimeData[day][hour] < -60) overtimeData[day][hour] = 0;
+            } else {
+                // Positive values
+                overtimeData[day][hour] = ((overtimeData[day][hour] || 0) + 15);
+                if (overtimeData[day][hour] > 60) overtimeData[day][hour] = 0;
+            }
+            
             saveData();
             renderApp();
         }
@@ -144,38 +159,19 @@
         function renderOvertimeBox(day, hour) {
             const consumed = overtimeData[day]?.[hour] || 0;
             const box = document.createElement('div');
-            box.className = `overtime-box ${consumed === 60 ? 'full' : `partial-${consumed}`}`;
-            box.textContent = consumed > 0 ? consumed : '';
+            
+            if (consumed > 0) {
+                box.className = `overtime-box ${consumed === 60 ? 'full' : `partial-${consumed}`}`;
+            } else if (consumed < 0) {
+                box.className = `overtime-box negative-${Math.abs(consumed)}`;
+            } else {
+                box.className = 'overtime-box';
+            }
+            
+            box.textContent = consumed !== 0 ? consumed : '';
 
-            let longPressTimer;
-            box.addEventListener('mousedown', () => {
-                longPressTimer = setTimeout(() => {
-                    handleBoxLongPress(day, hour);
-                }, 500); // 500ms for long press
-            });
-            box.addEventListener('mouseup', () => {
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    handleBoxClick(day, hour);
-                }
-            });
-            box.addEventListener('mouseleave', () => {
-                if (longPressTimer) clearTimeout(longPressTimer);
-            });
-
-            // For touch devices
-            box.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                longPressTimer = setTimeout(() => {
-                    handleBoxLongPress(day, hour);
-                }, 500);
-            });
-            box.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    handleBoxClick(day, hour);
-                }
+            box.addEventListener('click', (e) => {
+                handleBoxClick(day, hour, e.ctrlKey);
             });
 
             return box;
@@ -223,7 +219,9 @@
         }
 
         function formatBalance(minutes) {
-            return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+            const sign = minutes < 0 ? '-' : '';
+            const absMinutes = Math.abs(minutes);
+            return `${sign}${Math.floor(absMinutes / 60)}h ${absMinutes % 60}m`;
         }
 
         function renderApp() {
